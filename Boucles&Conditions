@@ -1,0 +1,57 @@
+--TRUNCATE TABLE Person
+
+DECLARE @PersonCount INT = 1, @NbRowPersonByCity INT =1
+
+WHILE @NbRowPersonByCity>0 AND @PersonCount<=120 
+BEGIN
+
+DECLARE @city INT
+SELECT @city = city_id FROM City ORDER BY NEWID()
+
+INSERT INTO Person(name, is_infected,FK_city_id) VALUES (CONCAT('Alex',@PersonCount),0,@city)
+
+IF @PersonCount %2=0
+	BEGIN
+	UPDATE Person SET is_infected = 1 WHERE person_id=@@IDENTITY
+	END
+
+SELECT COUNT(person_id)
+FROM Person
+GROUP BY FK_city_id
+HAVING COUNT(person_id)<10
+SELECT @NbRowPersonByCity=@@ROWCOUNT
+
+SET @PersonCount=@PersonCount+1
+
+END
+GO
+
+DECLARE @CountryId INT, 
+		@TotalInfected INT = (SELECT COUNT(is_infected) FROM Person WHERE (is_infected=1)),
+		@NumberPays INT = (SELECT COUNT(country_id) FROM Country),
+		@NumberInfected INT
+
+DECLARE Country_Cursor CURSOR SCROLL FOR SELECT country_id FROM Country
+OPEN Country_Cursor
+FETCH FIRST FROM Country_Cursor INTO @CountryId
+WHILE @@FETCH_STATUS = 0
+   BEGIN
+	   SET @NumberInfected = (SELECT COUNT(is_infected) AS Infected FROM Person
+									INNER JOIN City ON city_id=FK_city_id
+									INNER JOIN Country ON country_id=FK_country_id
+									GROUP BY Country.country_id, Person.is_infected
+									HAVING is_infected=1 AND Country.country_id=@CountryId)
+
+	   IF (@NumberInfected = @TotalInfected/@NumberPays)
+		BEGIN
+			SELECT COUNT(is_infected) AS Infected, City.name AS City, Country.country_id FROM Person
+			INNER JOIN City ON city_id=FK_city_id
+			INNER JOIN Country ON country_id=FK_country_id
+			GROUP BY Country.country_id, City.city_id, City.name, Person.is_infected
+			HAVING is_infected=1 AND Country.country_id=@CountryId
+		END
+   FETCH NEXT FROM Country_Cursor INTO @CountryId
+   END
+CLOSE Country_Cursor
+DEALLOCATE Country_Cursor
+GO
